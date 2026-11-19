@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="GarageLog" />
+  <title>GarageLog — Vehicle Maintenance</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    :root {
+      --bg: #0f1115;
+      --card: #181b22;
+      --card-2: #202530;
+      --border: #2b3140;
+      --text: #f3f5f8;
+      --muted: #9aa3b2;
+      --accent: #3b82f6;
+      --accent-soft: rgba(59, 130, 246, 0.16);
+      --green: #22c55e;
+      --yellow: #eab308;
+      --red: #ef4444;
+      --radius: 14px;
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      margin: 0; padding: 0;
+      background: var(--bg); color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+      font-size: 15px; line-height: 1.4;
+    }
+    .app-shell {
+      max-width: 680px; margin: 0 auto;
+      padding: calc(14px + env(safe-area-inset-top)) 14px calc(92px + env(safe-area-inset-bottom));
+    }
+    header.topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 14px;
+    }
+    .brand { font-size: 20px; font-weight: 700; letter-spacing: -0.3px; }
+    .brand span { color: var(--accent); }
+    .pill {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: var(--card-2); border: 1px solid var(--border);
+      color: var(--muted); font-size: 12px; font-weight: 600;
+      padding: 5px 10px; border-radius: 999px;
+    }
+    .card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 14px; margin-bottom: 12px;
+    }
+    .row { display: flex; gap: 10px; align-items: center; }
+    .row-between { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    h2 { font-size: 16px; margin: 0 0 10px; font-weight: 700; }
+    h3 { font-size: 15px; margin: 0; font-weight: 600; }
+    label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; font-weight: 600; }
+    input, select, textarea {
+      width: 100%; background: var(--card-2); color: var(--text);
+      border: 1px solid var(--border); border-radius: 10px;
+      padding: 11px 12px; font-size: 16px; font-family: inherit;
+      outline: none;
+    }
+    input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+    textarea { min-height: 72px; resize: vertical; }
+    button {
+      border: none; border-radius: 10px; padding: 11px 14px;
+      font-size: 15px; font-weight: 600; cursor: pointer; font-family: inherit;
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    }
+    .btn-primary { background: var(--accent); color: #fff; width: 100%; }
+    .btn-secondary { background: var(--card-2); color: var(--text); border: 1px solid var(--border); }
+    .btn-sm { padding: 7px 11px; font-size: 13px; border-radius: 8px; }
+    .btn-danger { background: rgba(239, 68, 68, 0.14); color: #fca5a5; border: 1px solid rgba(239,68,68,0.3); }
+    .vehicle-strip {
+      display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 12px;
+    }
+    .veh-chip {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 12px; padding: 10px; text-align: left; color: var(--text);
+      display: flex; flex-direction: column; gap: 3px; position: relative;
+    }
+    .veh-chip.active { border-color: var(--accent); background: var(--accent-soft); }
+    .veh-chip .name { font-weight: 700; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .veh-chip .meta { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .veh-chip .miles { font-size: 12px; color: var(--text); font-weight: 600; margin-top: 2px; }
+    .badge {
+      display: inline-block; padding: 2px 8px; border-radius: 999px;
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+    }
+    .badge-ok { background: rgba(34,197,94,0.16); color: #86efac; }
+    .badge-soon { background: rgba(234,179,8,0.18); color: #fde047; }
+    .badge-over { background: rgba(239,68,68,0.2); color: #fca5a5; }
+    .badge-neutral { background: var(--card-2); color: var(--muted); }
+    .log-item {
+      border-top: 1px solid var(--border); padding: 12px 0;
+    }
+    .log-item:first-child { border-top: none; padding-top: 2px; }
+    .muted { color: var(--muted); font-size: 13px; }
+    .tabbar {
+      position: fixed; left: 0; right: 0; bottom: 0;
+      background: rgba(15, 17, 21, 0.92); backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border-top: 1px solid var(--border);
+      display: flex; justify-content: space-around;
+      padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+      z-index: 50;
+    }
+    .tab-btn {
+      background: none; color: var(--muted); padding: 6px 12px;
+      flex-direction: column; font-size: 11px; gap: 3px; flex: 1;
+    }
+    .tab-btn.active { color: var(--accent); }
+    .tab-btn span.ico { font-size: 19px; line-height: 1; }
+    .hidden { display: none !important; }
+    .alert {
+      padding: 10px 12px; border-radius: 10px; font-size: 13px; margin-bottom: 12px;
+      background: rgba(234,179,8,0.14); border: 1px solid rgba(234,179,8,0.35); color: #fde68a;
+    }
+    .toast {
+      position: fixed; top: calc(14px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);
+      background: #1f2937; color: #fff; border: 1px solid var(--border);
+      padding: 10px 16px; border-radius: 999px; font-size: 13px; font-weight: 600;
+      z-index: 100; box-shadow: 0 10px 25px rgba(0,0,0,0.45);
+    }
+  </style>
+</head>
+<body>
+  <div id="toast" class="toast hidden"></div>
+
+  <!-- AUTH SCREEN -->
+  <div id="authView" class="app-shell hidden">
+    <div style="margin-top: 24px;">
+      <div class="brand" style="font-size: 28px; margin-bottom: 6px;">Garage<span>Log</span></div>
+      <p class="muted" style="margin-top: 0;">Private maintenance database for your 6-vehicle garage.</p>
+      <div id="configWarning" class="alert hidden">
+        Setup needed: Open <code>index.html</code> and paste your Supabase <b>URL</b> and <b>Anon Key</b>.
+      </div>
+      <div class="card">
+        <h2 id="authTitle">Sign In</h2>
+        <form id="authForm">
+          <label>Email</label>
+          <input type="email" id="authEmail" required placeholder="you@example.com" autocomplete="email" />
+          <label>Password</label>
+          <input type="password" id="authPass" required minlength="6" placeholder="Minimum 6 characters" autocomplete="current-password" />
+          <div style="margin-top: 14px;">
+            <button type="submit" class="btn-primary" id="authSubmitBtn">Sign In</button>
+          </div>
+        </form>
+        <div style="margin-top: 12px; text-align: center;">
+          <button type="button" class="btn-secondary btn-sm" id="toggleAuthMode">Need an account? Sign Up</button>
+        </div>
+        <p id="authMsg" class="muted" style="margin-top: 10px; color: #fca5a5;"></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN APP -->
+  <div id="mainView" class="app-shell hidden">
+    <header class="topbar">
+      <div class="brand">Garage<span>Log</span></div>
+      <div class="row">
+        <span class="pill" id="vehCountPill">0 / 6 Vehicles</span>
+        <button class="btn-secondary btn-sm" id="signOutBtn">Log Out</button>
+      </div>
+    </header>
+
+    <!-- VEHICLE SELECTOR STRIP -->
+    <div id="vehicleStrip" class="vehicle-strip"></div>
+
+    <!-- TAB: GARAGE / OVERVIEW -->
+    <section id="tab-garage">
+      <div id="activeVehicleCard" class="card hidden"></div>
+
+      <div class="card">
+        <div class="row-between" style="margin-bottom: 6px;">
+          <h2>Add / Edit Vehicle</h2>
+          <button class="btn-secondary btn-sm hidden" id="cancelVehEditBtn">Cancel Edit</button>
+        </div>
+        <p class="muted" id="vehLimitNote" style="margin-top: 0;">Manage up to 6 vehicles in your garage.</p>
+        <form id="vehicleForm">
+          <input type="hidden" id="vehEditId" />
+          <label>Nickname (e.g. "Daily Camry", "Weekend Truck") *</label>
+          <input id="vehNickname" required placeholder="Daily Driver" />
+          <div class="grid-2">
+            <div>
+              <label>Year *</label>
+              <input id="vehYear" type="number" min="1900" max="2035" required placeholder="2019" />
+            </div>
+            <div>
+              <label>Odometer (mi) *</label>
+              <input id="vehOdometer" type="number" min="0" required placeholder="64500" />
+            </div>
+          </div>
+          <div class="grid-2">
+            <div>
+              <label>Make *</label>
+              <input id="vehMake" required placeholder="Toyota" />
+            </div>
+            <div>
+              <label>Model *</label>
+              <input id="vehModel" required placeholder="Tacoma" />
+            </div>
+          </div>
+          <div class="grid-2">
+            <div>
+              <label>VIN (optional)</label>
+              <input id="vehVin" placeholder="17-char VIN" />
+            </div>
+            <div>
+              <label>Plate (optional)</label>
+              <input id="vehPlate" placeholder="ABC-1234" />
+            </div>
+          </div>
+          <label>Vehicle Notes (tire size, oil spec, etc.)</label>
+          <textarea id="vehNotes" placeholder="5W-30 synthetic, 6.1 qts, lug torque 83 ft-lb"></textarea>
+          <div style="margin-top: 12px;">
+            <button type="submit" class="btn-primary" id="saveVehBtn">Add Vehicle to Garage</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <!-- TAB: LOG MAINTENANCE -->
+    <section id="tab-log" class="hidden">
+      <div class="card">
+        <h2>Log Maintenance</h2>
+        <form id="logForm">
+          <label>Vehicle *</label>
+          <select id="logVehicle" required></select>
+
+          <label>Service Type *</label>
+          <select id="logServicePreset">
+            <option value="">-- Choose common service or type below --</option>
+            <option>Oil Change</option>
+            <option>Tire Rotation</option>
+            <option>Brake Pads &amp; Rotors</option>
+            <option>Engine Air Filter</option>
+            <option>Cabin Air Filter</option>
+            <option>Wiper Blades</option>
+            <option>Battery</option>
+            <option>Transmission Fluid</option>
+            <option>Coolant Flush</option>
+            <option>Brake Fluid</option>
+            <option>Spark Plugs</option>
+            <option>Tires Replaced</option>
+            <option>Alignment</option>
+            <option>Inspection / Registration</option>
+          </select>
+          <input id="logService" required placeholder="e.g. Oil Change" style="margin-top: 8px;" />
+
+          <div class="grid-2">
+            <div>
+              <label>Date *</label>
+              <input id="logDate" type="date" required />
+            </div>
+            <div>
+              <label>Odometer (mi) *</label>
+              <input id="logOdometer" type="number" min="0" required />
+            </div>
+          </div>
+
+          <div class="grid-2">
+            <div>
+              <label>Cost ($)</label>
+              <input id="logCost" type="number" step="0.01" min="0" placeholder="48.50" />
+            </div>
+            <div>
+              <label>Performed By</label>
+              <select id="logBy">
+                <option value="DIY">DIY</option>
+                <option value="Shop">Shop / Dealer</option>
+              </select>
+            </div>
+          </div>
+
+          <label>Parts / Fluids Used</label>
+          <input id="logParts" placeholder="Mobil 1 5W-30 5qt, OEM Filter 90915-YZZF2" />
+
+          <label>Notes</label>
+          <textarea id="logNotes" placeholder="Drain plug washer replaced, no leaks..."></textarea>
+
+          <div style="margin-top: 14px;">
+            <button type="submit" class="btn-primary">Save Maintenance Log</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <!-- TAB: HISTORY -->
+    <section id="tab-history" class="hidden">
+      <div class="card">
+        <div class="row-between" style="margin-bottom: 10px;">
+          <h2 style="margin: 0;">Service History</h2>
+          <button class="btn-secondary btn-sm" id="exportCsvBtn">Export CSV</button>
+        </div>
+        <div class="grid-2">
+          <select id="histVehicleFilter"></select>
+          <input id="histSearch" placeholder="Search oil, filter, notes..." />
+        </div>
+        <div id="histSummary" class="muted" style="margin-top: 10px;"></div>
+      </div>
+      <div class="card" id="historyList"></div>
+    </section>
+
+    <!-- TAB: INTERVALS / REMINDERS -->
+    <section id="tab-intervals" class="hidden">
+      <div class="card">
+        <h2>Maintenance Schedule</h2>
+        <p class="muted" style="margin-top: 0;">Compares each interval against your latest matching service log and current odometer.</p>
+        <div id="intervalsList"></div>
+      </div>
+
+      <div class="card">
+        <h2>Add Service Interval</h2>
+        <form id="intervalForm">
+          <label>Vehicle *</label>
+          <select id="intVehicle" required></select>
+          <label>Service Name (match log name, e.g. "Oil Change") *</label>
+          <input id="intService" required placeholder="Oil Change" />
+          <div class="grid-2">
+            <div>
+              <label>Every X Miles</label>
+              <input id="intMiles" type="number" min="100" placeholder="5000" />
+            </div>
+            <div>
+              <label>Every X Months</label>
+              <input id="intMonths" type="number" min="1" placeholder="6" />
+            </div>
+          </div>
+          <div style="margin-top: 14px;">
+            <button type="submit" class="btn-primary">Add Schedule Rule</button>
+          </div>
+        </form>
+      </div>
+    </section>
+  </div>
+
+  <!-- BOTTOM NAVIGATION -->
+  <nav id="tabbar" class="tabbar hidden">
+    <button class="tab-btn active" data-tab="garage"><span class="ico">🚗</span>Garage</button>
+    <button class="tab-btn" data-tab="log"><span class="ico">🔧</span>+ Log</button>
+    <button class="tab-btn" data-tab="history"><span class="ico">📋</span>History</button>
+    <button class="tab-btn" data-tab="intervals"><span class="ico">⏱️</span>Due</button>
+  </nav>
+
+  <script>
+    // =========================================================
+    // PASTE YOUR SUPABASE PROJECT DETAILS HERE
+    // =========================================================
+    const SUPABASE_URL = "YOUR_SUPABASE_URL";
+    const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY";
+    const MAX_VEHICLES = 6;
+
+    const isConfigured = SUPABASE_URL.startsWith("https://") && !SUPABASE_ANON_KEY.includes("YOUR_SUPABASE");
+    const db = isConfigured ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
+    const state = {
+      user: null,
+      vehicles: [],
+      logs: [],
+      intervals: [],
+      selectedVehicleId: null,
+      activeTab: "garage",
+      authMode: "signin"
+    };
+
+    // Helpers
+    const $ = (id) => document.getElementById(id);
+    const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+    const fmtNum = (n) => Number(n || 0).toLocaleString();
+    const fmtMoney = (n) => "$" + Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    function localToday() {
+      const d = new Date();
+      return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+    }
+    function showToast(msg) {
+      const t = $("toast");
+      t.textContent = msg;
+      t.classList.remove("hidden");
+      clearTimeout(t._timer);
+      t._timer = setTimeout(() => t.classList.add("hidden"), 2600);
+    }
+
+    // Initialization
+    async function init() {
+      if (!isConfigured) {
+        $("configWarning").classList.remove("hidden");
+        $("authView").classList.remove("hidden");
+        return;
+      }
+      const { data: { session } } = await db.auth.getSession();
+      if (session?.user) {
+        state.user = session.user;
+        await enterApp();
+      } else {
+        $("authView").classList.remove("hidden");
+      }
+
+      db.auth.onAuthStateChange(async (_event, session) => {
+        state.user = session?.user || null;
+        if (state.user) {
+          await enterApp();
+        } else {
+          $("mainView").classList.add("hidden");
+          $("tabbar").classList.add("hidden");
+          $("authView").classList.remove("hidden");
+        }
+      });
+    }
+
+    async function enterApp() {
+      $("authView").classList.add("hidden");
+      $("mainView").classList.remove("hidden");
+      $("tabbar").classList.remove("hidden");
+      $("logDate").value = localToday();
+      await loadAllData();
+    }
+
+    async function loadAllData() {
+      const [vRes, lRes, iRes] = await Promise.all([
+        db.from("vehicles").select("*").order("created_at", { ascending: true }),
+        db.from("maintenance_logs").select("*").order("service_date", { ascending: false }).order("created_at", { ascending: false }),
+        db.from("service_intervals").select("*").order("created_at", { ascending: true })
+      ]);
+      if (vRes.error || lRes.error || iRes.error) {
+        showToast("Error loading data");
+        return;
+      }
+      state.vehicles = vRes.data || [];
+      state.logs = lRes.data || [];
+      state.intervals = iRes.data || [];
+
+      if (!state.selectedVehicleId || !state.vehicles.some(v => v.id === state.selectedVehicleId)) {
+        state.selectedVehicleId = state.vehicles[0]?.id || null;
+      }
+      renderAll();
+    }
+
+    // Interval calculation helper
+    function getIntervalStatus(interval) {
+      const veh = state.vehicles.find(v => v.id === interval.vehicle_id);
+      if (!veh) return { label: "Unknown", cls: "badge-neutral", detail: "" };
+
+      const key = interval.service_type.trim().toLowerCase();
+      const matchingLogs = state.logs.filter(l =>
+        l.vehicle_id === interval.vehicle_id && l.service_type.trim().toLowerCase() === key
+      );
+      const last = matchingLogs[0];
+      if (!last) {
+        return { label: "No History", cls: "badge-soon", detail: "Log this service once to start tracking." };
+      }
+
+      let status = "ok";
+      const details = [`Last: ${last.service_date} @ ${fmtNum(last.odometer)} mi`];
+
+      if (interval.interval_miles) {
+        const dueAt = last.odometer + interval.interval_miles;
+        const left = dueAt - veh.odometer;
+        details.push(left <= 0 ? `${fmtNum(Math.abs(left))} mi overdue` : `${fmtNum(left)} mi left (due @ ${fmtNum(dueAt)})`);
+        if (left <= 0) status = "over";
+        else if (left <= Math.max(500, interval.interval_miles * 0.1)) status = "soon";
+      }
+
+      if (interval.interval_months) {
+        const dueDate = new Date(last.service_date + "T00:00:00");
+        dueDate.setMonth(dueDate.getMonth() + interval.interval_months);
+        const daysLeft = Math.ceil((dueDate - new Date()) / 86400000);
+        const dueStr = dueDate.toISOString().slice(0, 10);
+        details.push(daysLeft <= 0 ? `${Math.abs(daysLeft)}d overdue` : `${daysLeft}d left (due ${dueStr})`);
+        if (daysLeft <= 0) status = "over";
+        else if (daysLeft <= 21 && status !== "over") status = "soon";
+      }
+
+      const map = {
+        ok: { label: "Good", cls: "badge-ok" },
+        soon: { label: "Due Soon", cls: "badge-soon" },
+        over: { label: "Overdue", cls: "badge-over" }
+      };
+      return { ...map[status], detail: details.join(" · ") };
+    }
+
+    function renderAll() {
+      $("vehCountPill").textContent = `${state.vehicles.length} / ${MAX_VEHICLES} Vehicles`;
+      renderVehicleStrip();
+      renderActiveVehicleCard();
+      populateVehicleSelects();
+      renderHistory();
+      renderIntervals();
+    }
+
+    function renderVehicleStrip() {
+      const strip = $("vehicleStrip");
+      if (state.vehicles.length === 0) {
+        strip.innerHTML = `<div class="card" style="grid-column: 1 / -1; text-align:center;">No vehicles yet. Add your first vehicle below!</div>`;
+        return;
+      }
+      strip.innerHTML = state.vehicles.map(v => {
+        const active = v.id === state.selectedVehicleId ? "active" : "";
+        const alerts = state.intervals
+          .filter(i => i.vehicle_id === v.id)
+          .map(getIntervalStatus)
+          .filter(s => s.cls === "badge-over" || s.cls === "badge-soon").length;
+        const alertHtml = alerts > 0 ? `<span class="badge badge-over" style="position:absolute; top:8px; right:8px;">${alerts} due</span>` : "";
+        return `
+          <button type="button" class="veh-chip ${active}" data-veh-id="${v.id}">
+            ${alertHtml}
+            <div class="name">${esc(v.nickname)}</div>
+            <div class="meta">${v.year} ${esc(v.make)} ${esc(v.model)}</div>
+            <div class="miles">${fmtNum(v.odometer)} mi</div>
+          </button>
+        `;
+      }).join("");
+
+      strip.querySelectorAll("[data-veh-id]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          state.selectedVehicleId = btn.dataset.vehId;
+          renderAll();
+        });
+      });
+    }
+
+    function renderActiveVehicleCard() {
+      const card = $("activeVehicleCard");
+      const v = state.vehicles.find(x => x.id === state.selectedVehicleId);
+      if (!v) {
+        card.classList.add("hidden");
+        return;
+      }
+      card.classList.remove("hidden");
+      const vLogs = state.logs.filter(l => l.vehicle_id === v.id);
+      const totalSpend = vLogs.reduce((sum, l) => sum + Number(l.cost || 0), 0);
+
+      card.innerHTML = `
+        <div class="row-between">
+          <div>
+            <h3>${esc(v.nickname)} — ${v.year} ${esc(v.make)} ${esc(v.model)}</h3>
+            <div class="muted">${v.plate ? "Plate: " + esc(v.plate) + " · " : ""}${v.vin ? "VIN: " + esc(v.vin) : ""}</div>
+          </div>
+          <button class="btn-secondary btn-sm" id="quickOdoBtn">Update Miles</button>
+        </div>
+        <div class="grid-2" style="margin-top: 12px;">
+          <div style="background: var(--card-2); padding: 10px; border-radius: 10px;">
+            <div class="muted" style="font-size:11px;">ODOMETER</div>
+            <div style="font-size: 18px; font-weight: 700;">${fmtNum(v.odometer)} mi</div>
+          </div>
+          <div style="background: var(--card-2); padding: 10px; border-radius: 10px;">
+            <div class="muted" style="font-size:11px;">LOGGED SPEND (${vLogs.length})</div>
+            <div style="font-size: 18px; font-weight: 700;">${fmtMoney(totalSpend)}</div>
+          </div>
+        </div>
+        ${v.notes ? `<p class="muted" style="margin: 10px 0 0;"><b>Notes:</b> ${esc(v.notes)}</p>` : ""}
+        <div class="row" style="margin-top: 12px;">
+          <button class="btn-secondary btn-sm" id="editVehBtn">Edit Vehicle</button>
+          <button class="btn-danger btn-sm" id="deleteVehBtn">Delete</button>
+        </div>
+      `;
+
+      $("quickOdoBtn").onclick = async () => {
+        const val = prompt(`New odometer reading for ${v.nickname}:`, v.odometer);
+        if (val === null) return;
+        const parsed = parseInt(val.replace(/,/g, ""), 10);
+        if (isNaN(parsed) || parsed < 0) return showToast("Invalid mileage");
+        const { error } = await db.from("vehicles").update({ odometer: parsed }).eq("id", v.id);
+        if (error) return showToast(error.message);
+        showToast("Odometer updated");
+        await loadAllData();
+      };
+
+      $("editVehBtn").onclick = () => {
+        $("vehEditId").value = v.id;
+        $("vehNickname").value = v.nickname;
+        $("vehYear").value = v.year;
+        $("vehOdometer").value = v.odometer;
+        $("vehMake").value = v.make;
+        $("vehModel").value = v.model;
+        $("vehVin").value = v.vin || "";
+        $("vehPlate").value = v.plate || "";
+        $("vehNotes").value = v.notes || "";
+        $("saveVehBtn").textContent = "Save Vehicle Changes";
+        $("cancelVehEditBtn").classList.remove("hidden");
+        $("vehicleForm").scrollIntoView({ behavior: "smooth" });
+      };
+
+      $("deleteVehBtn").onclick = async () => {
+        if (!confirm(`Delete ${v.nickname} and ALL its maintenance logs?`)) return;
+        const { error } = await db.from("vehicles").delete().eq("id", v.id);
+        if (error) return showToast(error.message);
+        showToast("Vehicle deleted");
+        await loadAllData();
+      };
+    }
+
+    function populateVehicleSelects() {
+      const options = state.vehicles.map(v =>
+        `<option value="${v.id}">${esc(v.nickname)} (${v.year} ${esc(v.make)} ${esc(v.model)})</option>`
+      ).join("");
+
+      $("logVehicle").innerHTML = options || `<option value="">Add a vehicle first</option>`;
+      $("intVehicle").innerHTML = options || `<option value="">Add a vehicle first</option>`;
+      $("histVehicleFilter").innerHTML = `<option value="ALL">All Vehicles (${state.vehicles.length})</option>` + options;
+
+      if (state.selectedVehicleId) {
+        $("logVehicle").value = state.selectedVehicleId;
+        $("intVehicle").value = state.selectedVehicleId;
+      }
+      const selectedVeh = state.vehicles.find(v => v.id === $("logVehicle").value);
+      if (selectedVeh && !$("logOdometer").value) {
+        $("logOdometer").value = selectedVeh.odometer;
+      }
+    }
+
+    function renderHistory() {
+      const filterVeh = $("histVehicleFilter").value || "ALL";
+      const q = $("histSearch").value.trim().toLowerCase();
+
+      const filtered = state.logs.filter(l => {
+        if (filterVeh !== "ALL" && l.vehicle_id !== filterVeh) return false;
+        if (!q) return true;
+        return [l.service_type, l.parts_used, l.notes, l.performed_by]
+          .some(f => (f || "").toLowerCase().includes(q));
+      });
+
+      const total = filtered.reduce((s, l) => s + Number(l.cost || 0), 0);
+      $("histSummary").textContent = `${filtered.length} record(s) · Total: ${fmtMoney(total)}`;
+
+      const list = $("historyList");
+      if (filtered.length === 0) {
+        list.innerHTML = `<div class="muted" style="text-align:center; padding: 12px;">No matching maintenance logs.</div>`;
+        return;
+      }
+
+      list.innerHTML = filtered.map(l => {
+        const veh = state.vehicles.find(v => v.id === l.vehicle_id);
+        return `
+          <div class="log-item">
+            <div class="row-between">
+              <div>
+                <strong>${esc(l.service_type)}</strong>
+                <div class="muted">${veh ? esc(veh.nickname) : "Vehicle"} · ${l.service_date} · ${fmtNum(l.odometer)} mi</div>
+              </div>
+              <div style="text-align:right;">
+                <strong>${l.cost !== null ? fmtMoney(l.cost) : "—"}</strong>
+                <div><span class="badge badge-neutral">${esc(l.performed_by)}</span></div>
+              </div>
+            </div>
+            ${l.parts_used ? `<div class="muted" style="margin-top:6px;"><b>Parts:</b> ${esc(l.parts_used)}</div>` : ""}
+            ${l.notes ? `<div class="muted" style="margin-top:4px;">${esc(l.notes)}</div>` : ""}
+            <div style="margin-top:8px;">
+              <button class="btn-danger btn-sm" data-del-log="${l.id}">Delete</button>
+            </div>
+          </div>
+        `;
+      }).join("");
+
+      list.querySelectorAll("[data-del-log]").forEach(btn => {
+        btn.onclick = async () => {
+          if (!confirm("Delete this maintenance record?")) return;
+          const { error } = await db.from("maintenance_logs").delete().eq("id", btn.dataset.delLog);
+          if (error) return showToast(error.message);
+          showToast("Log deleted");
+          await loadAllData();
+        };
+      });
+    }
+
+    function renderIntervals() {
+      const box = $("intervalsList");
+      const items = state.intervals;
+      if (items.length === 0) {
+        box.innerHTML = `<div class="muted">No service intervals yet. Add one below (e.g. Oil Change every 5,000 miles / 6 months).</div>`;
+        return;
+      }
+      box.innerHTML = items.map(i => {
+        const veh = state.vehicles.find(v => v.id === i.vehicle_id);
+        const st = getIntervalStatus(i);
+        return `
+          <div class="log-item">
+            <div class="row-between">
+              <div>
+                <strong>${esc(i.service_type)}</strong> <span class="muted">(${veh ? esc(veh.nickname) : ""})</span>
+                <div class="muted">Every ${i.interval_miles ? fmtNum(i.interval_miles) + " mi" : ""}${i.interval_miles && i.interval_months ? " or " : ""}${i.interval_months ? i.interval_months + " mo" : ""}</div>
+                <div class="muted" style="margin-top:3px;">${esc(st.detail)}</div>
+              </div>
+              <div style="text-align:right;">
+                <span class="badge ${st.cls}">${st.label}</span>
+                <div style="margin-top:8px;">
+                  <button class="btn-danger btn-sm" data-del-int="${i.id}">Remove</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join("");
+
+      box.querySelectorAll("[data-del-int]").forEach(btn => {
+        btn.onclick = async () => {
+          const { error } = await db.from("service_intervals").delete().eq("id", btn.dataset.delInt);
+          if (error) return showToast(error.message);
+          showToast("Interval removed");
+          await loadAllData();
+        };
+      });
+    }
+
+    // Event Listeners
+    $("toggleAuthMode").onclick = () => {
+      state.authMode = state.authMode === "signin" ? "signup" : "signin";
+      $("authTitle").textContent = state.authMode === "signin" ? "Sign In" : "Create Account";
+      $("authSubmitBtn").textContent = state.authMode === "signin" ? "Sign In" : "Sign Up";
+      $("toggleAuthMode").textContent = state.authMode === "signin" ? "Need an account? Sign Up" : "Already have an account? Sign In";
+      $("authMsg").textContent = "";
+    };
+
+    $("authForm").onsubmit = async (e) => {
+      e.preventDefault();
+      if (!db) return;
+      const email = $("authEmail").value.trim();
+      const password = $("authPass").value;
+      $("authMsg").textContent = "";
+      if (state.authMode === "signup") {
+        const { data, error } = await db.auth.signUp({ email, password });
+        if (error) return ($("authMsg").textContent = error.message);
+        if (!data.session) {
+          $("authMsg").style.color = "#86efac";
+          $("authMsg").textContent = "Account created! Check your email to confirm, then sign in.";
+        }
+      } else {
+        const { error } = await db.auth.signInWithPassword({ email, password });
+        if (error) return ($("authMsg").textContent = error.message);
+      }
+    };
+
+    $("signOutBtn").onclick = () => db.auth.signOut();
+
+    $("cancelVehEditBtn").onclick = () => {
+      $("vehicleForm").reset();
+      $("vehEditId").value = "";
+      $("saveVehBtn").textContent = "Add Vehicle to Garage";
+      $("cancelVehEditBtn").classList.add("hidden");
+    };
+
+    $("vehicleForm").onsubmit = async (e) => {
+      e.preventDefault();
+      const editId = $("vehEditId").value;
+      if (!editId && state.vehicles.length >= MAX_VEHICLES) {
+        return showToast(`Limit of ${MAX_VEHICLES} vehicles reached`);
+      }
+      const payload = {
+        nickname: $("vehNickname").value.trim(),
+        year: parseInt($("vehYear").value, 10),
+        odometer: parseInt($("vehOdometer").value, 10),
+        make: $("vehMake").value.trim(),
+        model: $("vehModel").value.trim(),
+        vin: $("vehVin").value.trim() || null,
+        plate: $("vehPlate").value.trim() || null,
+        notes: $("vehNotes").value.trim() || null
+      };
+      const res = editId
+        ? await db.from("vehicles").update(payload).eq("id", editId)
+        : await db.from("vehicles").insert(payload).select().single();
+
+      if (res.error) return showToast(res.error.message);
+      if (!editId && res.data) state.selectedVehicleId = res.data.id;
+      $("cancelVehEditBtn").click();
+      showToast(editId ? "Vehicle updated" : "Vehicle added");
+      await loadAllData();
+    };
+
+    $("logServicePreset").onchange = () => {
+      if ($("logServicePreset").value) $("logService").value = $("logServicePreset").value;
+    };
+
+    $("logVehicle").onchange = () => {
+      const v = state.vehicles.find(x => x.id === $("logVehicle").value);
+      if (v) $("logOdometer").value = v.odometer;
+    };
+
+    $("logForm").onsubmit = async (e) => {
+      e.preventDefault();
+      const vehicleId = $("logVehicle").value;
+      if (!vehicleId) return showToast("Add a vehicle first");
+      const odo = parseInt($("logOdometer").value, 10);
+      const costRaw = $("logCost").value;
+
+      const { error } = await db.from("maintenance_logs").insert({
+        vehicle_id: vehicleId,
+        service_type: $("logService").value.trim(),
+        service_date: $("logDate").value,
+        odometer: odo,
+        cost: costRaw !== "" ? parseFloat(costRaw) : null,
+        performed_by: $("logBy").value,
+        parts_used: $("logParts").value.trim() || null,
+        notes: $("logNotes").value.trim() || null
+      });
+      if (error) return showToast(error.message);
+
+      // Auto-advance vehicle odometer if this log is higher
+      const veh = state.vehicles.find(v => v.id === vehicleId);
+      if (veh && odo > veh.odometer) {
+        await db.from("vehicles").update({ odometer: odo }).eq("id", vehicleId);
+      }
+
+      $("logForm").reset();
+      $("logDate").value = localToday();
+      state.selectedVehicleId = vehicleId;
+      showToast("Maintenance logged!");
+      await loadAllData();
+    };
+
+    $("intervalForm").onsubmit = async (e) => {
+      e.preventDefault();
+      const miles = $("intMiles").value ? parseInt($("intMiles").value, 10) : null;
+      const months = $("intMonths").value ? parseInt($("intMonths").value, 10) : null;
+      if (!miles && !months) return showToast("Enter miles and/or months");
+      const { error } = await db.from("service_intervals").insert({
+        vehicle_id: $("intVehicle").value,
+        service_type: $("intService").value.trim(),
+        interval_miles: miles,
+        interval_months: months
+      });
+      if (error) return showToast(error.message);
+      $("intervalForm").reset();
+      showToast("Interval added");
+      await loadAllData();
+    };
+
+    $("histVehicleFilter").onchange = renderHistory;
+    $("histSearch").oninput = renderHistory;
+
+    $("exportCsvBtn").onclick = () => {
+      const rows = [["Vehicle", "Date", "Service", "Odometer", "Cost", "Performed By", "Parts", "Notes"]];
+      state.logs.forEach(l => {
+        const v = state.vehicles.find(x => x.id === l.vehicle_id);
+        rows.push([
+          v ? `${v.nickname} (${v.year} ${v.make} ${v.model})` : "",
+          l.service_date, l.service_type, l.odometer, l.cost ?? "", l.performed_by, l.parts_used ?? "", l.notes ?? ""
+        ]);
+      });
+      const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+      a.download = `garagelog-export-${localToday()}.csv`;
+      a.click();
+    };
+
+    document.querySelectorAll(".tab-btn").forEach(btn => {
+      btn.onclick = () => {
+        state.activeTab = btn.dataset.tab;
+        document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b === btn));
+        ["garage", "log", "history", "intervals"].forEach(t => {
+          $("tab-" + t).classList.toggle("hidden", t !== state.activeTab);
+        });
+        if (state.activeTab === "log") {
+          const v = state.vehicles.find(x => x.id === $("logVehicle").value);
+          if (v) $("logOdometer").value = v.odometer;
+        }
+      };
+    });
+
+    init();
+  </script>
+</body>
+</html>
